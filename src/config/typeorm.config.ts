@@ -1,6 +1,7 @@
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
 import * as dotenv from "dotenv";
-import { Book } from 'src/book/entities/book.entity';
+import { Board } from 'src/board/entities/board.entity';
+import { Comment } from 'src/comment/entities/comment.entity';
 import { Member } from 'src/member/entities/member.entity';
 
 dotenv.config();
@@ -12,8 +13,8 @@ export const typeORMConfig: TypeOrmModuleOptions = {
   username: 'root',
   password: process.env.DB_PASS,
   database: 'nest',
-  //entities: [Member, Book],
+  entities: [Member, Board, Comment],
   synchronize: true,
-  autoLoadEntities: true,
+  //autoLoadEntities: true,
   logging: true,
 };

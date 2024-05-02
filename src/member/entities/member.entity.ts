@@ -1,17 +1,25 @@
-import { Book } from 'src/book/entities/book.entity';
+import { Board } from 'src/board/entities/board.entity';
+import { Comment } from 'src/comment/entities/comment.entity';
+import { CommonEntity } from 'src/common/common.entity';
 import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity()
-export class Member {
-  @PrimaryGeneratedColumn()
+export class Member extends CommonEntity {
+  @PrimaryGeneratedColumn({name:'member_id'})
   id: number;
 
   @Column()
-  username: string;
+  name: string;
+
+  @Column()
+  email: string;
 
   @Column()
   password: string;
 
-  @OneToMany(()=> Book, (book) => book.member)
-  books: Book[];
+  @OneToMany(()=>Board, (board)=>board.member)
+  boards: Board[]
+
+  @OneToMany(()=>Comment, (comment)=>comment.member)
+  comments: Comment[]
 }
