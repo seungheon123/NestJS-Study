@@ -20,6 +20,7 @@ export class Board extends CommonEntity {
     @Column()
     views: number;
 
+
     @ManyToOne(()=>Member, (member)=>member.boards)
     @JoinColumn({name:'writer',referencedColumnName:'id'})
     member: Member;
