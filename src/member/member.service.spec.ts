@@ -6,6 +6,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcryptUtils from "../../src/utils/bcrypt"
 import { MemberRepository } from './member.repository';
+import { find } from 'rxjs';
+import { Board } from 'src/board/entities/board.entity';
 
 describe('MemberService', () => {
   let service: MemberService;
@@ -19,6 +21,7 @@ describe('MemberService', () => {
           useValue:{
             create: jest.fn(),
             save: jest.fn(),
+            find: jest.fn(),
           }
         }
       ],
@@ -63,6 +66,28 @@ describe('MemberService', () => {
         password: 'hashed123',
       });
     })
+  })
+
+  describe('findAll()', ()=>{
+    const members: Member[] = [
+      {
+        id: 1,
+        name: 'test',
+        email: 'test@gmail.com',
+        password: 'hashed123',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        deleteAt: null,
+        boards: [],
+        comments: [],
+      } as Member,
+    ]
+    it('should return All Members', async()=>{
+      jest.spyOn(service,'findAll').mockResolvedValueOnce(members);
+      const result = await service.findAll();
+      expect(result).toEqual(members);
+    })
+    
   })
 
 });
