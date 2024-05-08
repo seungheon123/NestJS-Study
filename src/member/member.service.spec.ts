@@ -5,7 +5,7 @@ import { CreateMemberDto } from './dto/create-member.dto';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcryptUtils from "../../src/utils/bcrypt"
-import { MemberRepository } from './member.repository';
+import { MemberRepository } from './member.repositoryImpl';
 import { find } from 'rxjs';
 import { Board } from 'src/board/entities/board.entity';
 
