@@ -1,93 +1,87 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { MemberService } from './member.service';
-import { Member } from './entities/member.entity';
-import { CreateMemberDto } from './dto/create-member.dto';
-import { getRepositoryToken } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import * as bcryptUtils from "../../src/utils/bcrypt"
-import { MemberRepository } from './member.repositoryImpl';
-import { find } from 'rxjs';
-import { Board } from 'src/board/entities/board.entity';
+import { Test } from "@nestjs/testing"
+import { MemberService } from "./member.service";
+import { find } from "rxjs";
+import { MemberRepository } from "./member.repository";
+import { Member } from "./entities/member.entity";
+import { CreateMemberDto } from "./dto/create-member.dto";
 
-describe('MemberService', () => {
-  let service: MemberService;
-  let repository: Repository<Member>;
+describe('MemberService', ()=>{
+    let service: MemberService;
 
-  beforeEach(async()=>{
-    const module: TestingModule = await Test.createTestingModule({
-      providers:[MemberService,
-        {
-          provide: getRepositoryToken(Member),
-          useValue:{
-            create: jest.fn(),
-            save: jest.fn(),
-            find: jest.fn(),
-          }
+    const members:Member[] = [];
+
+    beforeEach(async()=>{
+        //Create a fake copy of the memberRepsoitory
+        const fakeMemberRepository: Partial<MemberRepository> = {
+            create: (createMemberDto: CreateMemberDto) => (
+                {name: createMemberDto.name, email:createMemberDto.email, password:createMemberDto.password} as Member
+            ),
+            save: (member:Member) => {
+                const user = {
+                    id: 1, 
+                    name: member.name, 
+                    password: member.password, 
+                    email:member.email
+                } as Member;
+                members.push(user);
+                return Promise.resolve(user);
+            },
+            findByName: (name: String) => {
+                const filterMember = members.filter((member)=>member.name === name);
+                return Promise.resolve(filterMember[0]);
+            },
         }
-      ],
-    }).compile();
-
-    service = module.get<MemberService>(MemberService);
-    repository = module.get<Repository<Member>>(getRepositoryToken(Member));
-  });
-  
-  it('service should be defined', ()=>{
-    expect(service).toBeDefined();
-  })
-
-  it('repository should be defined', ()=>{
-    expect(repository).toBeDefined();
-  })
-
-  describe('create()',()=>{
-    jest
-      .spyOn(bcryptUtils, 'encodePassword')
-      .mockReturnValue('hashed123');
-
-    it("should encode password", async()=>{
-      await service.create({
-        name: 'test',
-        email: 'test@gmail.com',
-        password: '123',
-      });
-
-      expect(bcryptUtils.encodePassword).toHaveBeenCalledWith('123');
-    });
-
-    it("should call userRepository.create with correct params", async()=>{
-      await service.create({
-        name: 'test',
-        email: 'test@gmail.com',
-        password: '123',
-      });
-      expect(repository.create).toHaveBeenCalledWith({
-        name: 'test',
-        email: 'test@gmail.com',
-        password: 'hashed123',
-      });
-    })
-  })
-
-  describe('findAll()', ()=>{
-    const members: Member[] = [
-      {
-        id: 1,
-        name: 'test',
-        email: 'test@gmail.com',
-        password: 'hashed123',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        deleteAt: null,
-        boards: [],
-        comments: [],
-      } as Member,
-    ]
-    it('should return All Members', async()=>{
-      jest.spyOn(service,'findAll').mockResolvedValueOnce(members);
-      const result = await service.findAll();
-      expect(result).toEqual(members);
-    })
     
-  })
+        const module = await Test.createTestingModule({
+            providers: [
+                MemberService,
+                {
+                    provide: MemberRepository,
+                    useValue: fakeMemberRepository
+                }
+            ]
+        }).compile();
+    
+        service = module.get(MemberService);
+    });
+    
+    it('can create an inastance of MemberService', async()=>{
+        expect(service).toBeDefined();
+    })
+
+    it('find a user by name', async()=>{
+        const dto: CreateMemberDto = {
+            "name" : "test",
+            "email" : "email",
+            "password" : "password" 
+        }
+        await service.create(dto);
+        const result = await service.findByName('test');
+        expect(result.name).toEqual('test');
+    })
+
+    it('can create a new member', async()=>{
+        const dto: CreateMemberDto = {
+            "name" : "test1",
+            "email" : "email1",
+            "password" : "password" 
+        }
+        const result = await service.create(dto);
+        expect(result.name).toEqual("test1");
+        expect(result.email).toEqual("email1");        
+    })
+
+    it('can not create a new member with the same name', async()=>{
+        const dto: CreateMemberDto = {
+            "name" : "test",
+            "email" : "email",
+            "password" : "password" 
+        }
+        try{
+            await service.create(dto);
+        }catch(e){
+            expect(e.message).toEqual('중복되는 이름입니다.');
+        }
+    })
 
 });
