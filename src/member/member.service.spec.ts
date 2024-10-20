@@ -18,7 +18,6 @@ describe('MemberService', ()=>{
             ),
             save: (member:Member) => {
                 const user = {
-                    id: 1, 
                     name: member.name, 
                     password: member.password, 
                     email:member.email
@@ -82,6 +81,22 @@ describe('MemberService', ()=>{
         }catch(e){
             expect(e.message).toEqual('중복되는 이름입니다.');
         }
+    })
+
+    it('can update a member', async()=>{
+        const dto: CreateMemberDto = {
+            "name" : "test",
+            "email" : "email",
+            "password" : "password" 
+        }
+        const result = await service.create(dto);
+        const updateDto = {
+            "name" : "test",
+            "email" : "email",
+            "password" : "password" 
+        }
+        const updateResult = await service.update(result.id, updateDto);
+        expect(updateResult).toEqual(`This action updates a #${result.id} member`);
     })
 
 });

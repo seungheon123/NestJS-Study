@@ -1,7 +1,9 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseInterceptors } from '@nestjs/common';
 import { MemberService } from './member.service';
 import { CreateMemberDto } from './dto/create-member.dto';
 import { UpdateMemberDto } from './dto/update-member.dto';
+import { Member } from './entities/member.entity';
+import { SerializeInterceptor } from 'src/interceptors/serialize.interceptor';
 
 @Controller('member')
 export class MemberController {
@@ -12,15 +14,16 @@ export class MemberController {
     return this.memberService.create(createMemberDto);
   }
 
-  @Get()
-  findAll() {
-    return this.memberService.findAll();
+  // @Get()
+  // findAll() {
+  //   return this.memberService.findAll();
+  // }
+  @UseInterceptors(SerializeInterceptor)
+  @Get(":name")
+  async findByName(@Param('name') name:string){
+    return await this.memberService.findByName(name);
   }
 
-  @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.memberService.findOne(+id);
-  }
 
   @Patch(':id')
   update(@Param('id') id: string, @Body() updateMemberDto: UpdateMemberDto) {

@@ -4,8 +4,9 @@ import { typeORMConfig } from './config/typeorm.config';
 import { MemberModule } from './member/member.module';
 import { BoardModule } from './board/board.module';
 import { CommentModule } from './comment/comment.module';
+import { GuardModule } from './guard/guard.module';
 
 @Module({
-  imports: [TypeOrmModule.forRoot(typeORMConfig), MemberModule, BoardModule, CommentModule],
+  imports: [TypeOrmModule.forRoot(typeORMConfig), MemberModule, BoardModule, CommentModule, GuardModule],
 })
 export class AppModule {}

@@ -22,4 +22,10 @@ export class Member extends CommonEntity {
 
   @OneToMany(()=>Comment, (comment)=>comment.member)
   comments: Comment[]
+  
+  // static findByName(name: string){
+  //   return this.createQueryBuilder("member")
+  //     .where("member.name=:name",{name})
+  //     .getOne()
+  // }
 }
