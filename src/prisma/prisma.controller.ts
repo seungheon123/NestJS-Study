@@ -1,28 +1,36 @@
-import { Controller, Get, Post } from "@nestjs/common";
+import { Controller, Get, Param, Post } from "@nestjs/common";
 import { PrismaService } from "./prisma.service";
+import { FindbyDto } from "./findby.dto";
 
 @Controller("prisma")
 export class PrismaController {
   constructor(private readonly prismaService: PrismaService) {}
 
   @Get('/new')
-  createUser() {
-    return this.prismaService.member.create({
-      data: {
-        email: "test@gmail.com",
-        name: "Test User",
-      },
-    });
+  async createUser() {
+    return this.prismaService.create();
   }
 
   @Get('/all')
-  getAllUsers() {
-    const members = this.prismaService.member.findMany();
-    members.then((data) => {
-      data.forEach((member) => {
-        console.log(member.password);
-      });
-    })
+  async getAllUsers() {
+    const members =await  this.prismaService.findMany();
     return members;
+  }
+
+  @Get('/find/:id')
+  async getUserById(@Param('id') id: string) {
+    const memberId = parseInt(id);
+    const member = await this.prismaService.findById(memberId);
+    return new FindbyDto(member);
+  }
+
+  @Get('/test')
+  async test() {
+    return this.prismaService.withTransaction();
+  }
+
+  @Get('/test2')
+  async test2() {
+    return this.prismaService.withoutTransaction();
   }
 }
