@@ -1,4 +1,4 @@
-import { DataSource, EntityRepository, Repository } from "typeorm";
+import { DataSource, EntityRepository, Repository, Transaction } from "typeorm";
 import { Member } from "./entities/member.entity";
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { CreateMemberDto } from "./dto/create-member.dto";

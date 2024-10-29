@@ -33,4 +33,14 @@ export class PrismaController {
   async test2() {
     return this.prismaService.withoutTransaction();
   }
+
+  @Get("/boards")
+  async getBoards() {
+    return this.prismaService.getBoards();
+  }
+
+  @Get("/boards-member")
+  async getBoardsWithMembers() {
+    return this.prismaService.getBoardsWithMember();
+  }
 }

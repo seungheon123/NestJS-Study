@@ -8,6 +8,7 @@ import { GuardModule } from './guard/guard.module';
 import { DynamicModuleModule } from './dynamic-module/dynamic-module.module';
 import { ExceptionModule } from "./exception/exception.module";
 import { PrismaModule } from './prisma/prisma.module';
+import { ConfigModule } from "@nestjs/config";
 
 @Module({
   imports: [

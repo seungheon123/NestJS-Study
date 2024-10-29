@@ -1,6 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { PrismaRepository } from "./prisma.repository";
-import { Member } from "@prisma/client";
+import { Board, Member } from "@prisma/client";
 
 @Injectable()
 export class PrismaService{
@@ -65,5 +65,19 @@ export class PrismaService{
         email: "test3@gmail.com"
       }
     });
+  }
+
+  async getBoards() : Promise<Board[]> {
+    return this.prismaRepository.board.findMany();
+  }
+
+  async getBoardsWithMember(): Promise<Board[]> {
+    const boards = this.prismaRepository.board.findMany({
+      include: {
+        member: true
+      }
+    });
+    console.log(boards);
+    return boards;
   }
 }
