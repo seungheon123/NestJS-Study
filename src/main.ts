@@ -6,6 +6,11 @@ declare const module: any;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.enableCors({
+    origin: '*', // 모든 도메인 허용 (보안상 필요한 경우 도메인을 제한할 수 있음)
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
+  });
   app.useGlobalPipes(new ValidationPipe());
   await app.listen(3000);
   if(module.hot) {

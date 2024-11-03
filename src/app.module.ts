@@ -9,6 +9,7 @@ import { DynamicModuleModule } from './dynamic-module/dynamic-module.module';
 import { ExceptionModule } from "./exception/exception.module";
 import { PrismaModule } from './prisma/prisma.module';
 import { ConfigModule } from "@nestjs/config";
+import { HlsModule } from "./hls/hls.module";
 
 @Module({
   imports: [
@@ -19,7 +20,8 @@ import { ConfigModule } from "@nestjs/config";
     GuardModule,
     DynamicModuleModule,
     ExceptionModule,
-    PrismaModule
+    PrismaModule,
+    HlsModule
   ],
 })
 export class AppModule {}
