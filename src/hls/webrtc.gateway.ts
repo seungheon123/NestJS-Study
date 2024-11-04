@@ -6,6 +6,7 @@ import { HlsService } from '../hls/hls.service';
 import { spawn } from "child_process";
 import ffmpeg from "ffmpeg-static";
 import { RtpCodecCapability } from "mediasoup/node/lib/RtpParameters";
+import * as sdpTransform from 'sdp-transform';
 
 @Injectable()
 export class WebRtcGateway {
@@ -17,26 +18,32 @@ export class WebRtcGateway {
   }
 
   private async initMediasoup() {
-    const mediaCodecs: RtpCodecCapability[] =
-      [
-        {
-          kind        : "audio",
-          mimeType    : "audio/opus",
-          clockRate   : 48000,
-          channels    : 2
-        },
-        {
-          kind       : "video",
-          mimeType   : "video/H264",
-          clockRate  : 90000,
-          parameters :
-            {
-              "packetization-mode"      : 1,
-              "profile-level-id"        : "42e01f",
-              "level-asymmetry-allowed" : 1
-            }
-        }
-      ];
+    const mediaCodecs: RtpCodecCapability[] = [
+      {
+        kind: 'video',
+        mimeType: 'video/VP8',
+        clockRate: 90000,
+        parameters: {},
+      },
+      {
+        kind: 'video',
+        mimeType: 'video/VP9',
+        clockRate: 90000,
+        parameters: {},
+      },
+      {
+        kind: 'video',
+        mimeType: 'video/h264',
+        clockRate: 90000,
+        parameters: {},
+      },
+      {
+        kind: 'audio',
+        mimeType: 'audio/opus',
+        clockRate: 48000,
+        channels: 2,
+      }
+    ];
 
     const worker = await mediasoup.createWorker();
     this.router = await worker.createRouter({ mediaCodecs });
@@ -56,60 +63,60 @@ export class WebRtcGateway {
     return this.transport;
   }
 
-  async handleOffer(offerSdp: string) {
-    const peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
-    await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSdp }));
-    const answerSdp = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answerSdp);
-
-    peerConnection.onicecandidate = (event) => {
-      if(event.candidate) {
-        console.log('New ICE candidate:', event.candidate);
-      }
-    };
-    return answerSdp.sdp;
-  }
-
-  // public async handleOffer(offerSdp: string) {
-  //   const transport = await this.createTransport();
+  // async handleOffer(offerSdp: string) {
+  //   console.log(offerSdp);
+  //   const peerConnection = new RTCPeerConnection({
+  //     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+  //   });
+  //   await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSdp }));
+  //   const answerSdp = await peerConnection.createAnswer();
+  //   await peerConnection.setLocalDescription(answerSdp);
   //
-  //   // WebRTC 연결을 위한 DTLS 파라미터 설정
-  //   await transport.connect({ dtlsParameters: {
-  //       role: "auto",
-  //       fingerprints: []
-  //     } });
-  //
-  //   // 클라이언트에서 받은 SDP로부터 RTP 파라미터를 추출
-  //   const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
-  //
-  //   // transport.produce()에 ssrc 포함된 rtpParameters 사용
-  //   const producer = await transport.produce({ kind: 'video', rtpParameters });
-  //
-  //   console.log('Producer created with id:', producer.id);
-  //
-  //   // Return necessary details to the client
-  //   return transport;
+  //   peerConnection.onicecandidate = (event) => {
+  //     if(event.candidate) {
+  //       console.log('New ICE candidate:', event.candidate);
+  //     }
+  //   };
+  //   return answerSdp.sdp;
   // }
 
-  private extractRtpParametersFromSdp(sdp: string) {
-    // 이 함수에서 SDP를 파싱하여 필요한 ssrc, mid 등의 정보를 추출하는 로직이 필요합니다.
-    const rtpParameters: RtpParameters = {
-      codecs: [
-        {
-          mimeType: 'video/VP8',
-          payloadType: 101,
-          clockRate: 90000,
-        },
-      ],
-      encodings: [
-        {
-          ssrc: 12345678, // 실제로는 SDP에서 ssrc를 파싱하여 설정해야 합니다.
-        },
-      ],
+  public async handleOffer(offerSdp: string) {
+    const transport = await this.createTransport();
+
+    const sdpObject = sdpTransform.parse(offerSdp);
+    const fingerprints = [];
+
+    // SDP의 모든 미디어 섹션에서 fingerprint를 찾아서 배열에 추가
+    for (const media of sdpObject.media) {
+      if (media.fingerprint) {
+        fingerprints.push({
+          algorithm: media.fingerprint.type,
+          value: media.fingerprint.hash,
+        });
+        break; // 첫 번째 fingerprint만 사용하고 나머지는 무시
+      }
+    }
+
+    // WebRTC 연결을 위한 DTLS 파라미터 설정
+    await transport.connect({ dtlsParameters: {
+        role: "auto",
+        fingerprints,
+      } });
+
+    const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
+
+    // 클라이언트에서 받은 SDP로부터 RTP 파라미터를 추출
+    // const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
+
+    // transport.produce()에 ssrc 포함된 rtpParameters 사용
+    const producer = await transport.produce({ kind: 'video', rtpParameters });
+
+    // Return necessary details to the client
+    return {
+      id: producer.id,
+      kind: producer.kind,
+      transportId: transport.id,
     };
-    return rtpParameters;
   }
 
   private saveStreamToDisk(producer) {
@@ -133,5 +140,37 @@ export class WebRtcGateway {
     ffmpegProcess.on('close', (code) => {
       console.log(`FFmpeg process exited with code ${code}`);
     });
+  }
+
+  private extractRtpParametersFromSdp(offerSdp: string): mediasoup.types.RtpParameters {
+    const sdpObject = sdpTransform.parse(offerSdp);
+    const videoMedia = sdpObject.media.find(media => media.type === 'video');
+
+    if (!videoMedia) {
+      throw new Error('No video media section found in the SDP');
+    }
+
+    // Extract codecs
+    const codecs = videoMedia.rtp.map(codec => ({
+      mimeType: `video/${codec.codec}`,
+      payloadType: codec.payload,
+      clockRate: codec.rate,
+      channels: codec.encoding || 1,
+      parameters: {}, // Add codec parameters if available
+    }));
+
+    // Extract encodings (using SSRC)
+    const encodings = videoMedia.ssrcs
+      ? [{ ssrc: parseInt(videoMedia.ssrcs[0].id, 10) }]
+      : [];
+
+    if (encodings.length === 0) {
+      throw new Error('No SSRC found in the video media section');
+    }
+
+    return {
+      codecs,
+      encodings,
+    };
   }
 }

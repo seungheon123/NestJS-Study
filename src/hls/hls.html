@@ -91,20 +91,25 @@
   async function startStreaming() {
     const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     mediaStream.getTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
+    localVideo.srcObject = mediaStream;
+
 
     // Create an offer and set it as the local description
     const offer = await peerConnection.createOffer();
     await peerConnection.setLocalDescription(offer);
 
     // Send the offer SDP with fingerprint to the server
-    const response = await fetch('http://localhost:3000/webrtc/start', {
+    const response = await fetch('http://localhost:3000/hls/start', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sdp: peerConnection.localDescription.sdp })
     });
+    console.log(response);
 
     const { sdp: answerSdp } = await response.json();
+    console.log(answerSdp);
     await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSdp }));
+    console.log('Streaming started');
   }
 
   function stopStreaming() {
