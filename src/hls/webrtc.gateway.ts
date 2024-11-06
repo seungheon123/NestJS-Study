@@ -1,20 +1,76 @@
 // src/webrtc/webrtc.gateway.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as mediasoup from 'mediasoup';
-import { RtpCapabilities, RtpParameters, WebRtcTransport } from 'mediasoup/node/lib/types';
+import {
+  RtpCapabilities,
+  RtpParameters,
+  WebRtcTransport,
+} from 'mediasoup/node/lib/types';
 import { HlsService } from '../hls/hls.service';
-import { spawn } from "child_process";
-import ffmpeg from "ffmpeg-static";
-import { RtpCodecCapability } from "mediasoup/node/lib/RtpParameters";
+import { spawn } from 'child_process';
+import ffmpeg from 'ffmpeg-static';
+import { RtpCodecCapability } from 'mediasoup/node/lib/RtpParameters';
 import * as sdpTransform from 'sdp-transform';
 
 @Injectable()
-export class WebRtcGateway {
-  private router: mediasoup.types.Router;
+export class WebRtcGateway implements OnModuleInit {
+  private worker: mediasoup.types.Worker;
   private transport: WebRtcTransport;
+  private router: mediasoup.types.Router;
 
-  constructor(private readonly hlsService: HlsService) {
-    this.initMediasoup();
+  async onModuleInit() {
+    this.worker = await mediasoup.createWorker({
+      logLevel: 'debug',
+      logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
+      rtcMinPort: 40000,
+      rtcMaxPort: 49999,
+    });
+    this.router = await this.worker.createRouter({
+      mediaCodecs: [
+        {
+          kind: 'audio',
+          mimeType: 'audio/opus',
+          clockRate: 48000,
+          channels: 2,
+        },
+        {
+          kind: 'video',
+          mimeType: 'video/VP8',
+          clockRate: 90000,
+        },
+      ],
+    });
+
+    const webRtcTransport = await this.router.createWebRtcTransport({
+      listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
+      enableUdp: true,
+      enableTcp: true,
+      preferUdp: true,
+    });
+    // transport.on('connect', (dtlsParameters, callback) => {
+    //   console.log('Transport connected');
+    //   callback();
+    // });
+    // transport.on('connectionstatechange', (state) => {
+    //   console.log(`Connection state changed: ${state}`);
+    // });
+    await webRtcTransport.setMaxIncomingBitrate(3500000);
+    await webRtcTransport.setMaxOutgoingBitrate(2000000);
+    await webRtcTransport.connect({
+      dtlsParameters: {
+        role: 'auto',
+        fingerprints: [
+          {
+            algorithm: 'sha-256',
+            value:
+              'E5:F5:CA:A7:2D:93:E6:16:AC:21:09:9F:23:51:62:8C:D0:66:E9:0C:22:54:2B:82:0C:DF:E0:C5:2C:7E:CD:53',
+          },
+        ],
+      },
+    });
+    webRtcTransport.on('routerclose', () => {
+      console.log('Router closed');
+    });
   }
 
   private async initMediasoup() {
@@ -42,7 +98,7 @@ export class WebRtcGateway {
         mimeType: 'audio/opus',
         clockRate: 48000,
         channels: 2,
-      }
+      },
     ];
 
     const worker = await mediasoup.createWorker();
@@ -51,11 +107,9 @@ export class WebRtcGateway {
     console.log('Mediasoup Worker and Router initialized');
   }
 
-
-
   private async createTransport() {
     this.transport = await this.router.createWebRtcTransport({
-      listenIps: [{ ip: '0.0.0.0', announcedIp: null}],
+      listenIps: [{ ip: '0.0.0.0', announcedIp: null }],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
@@ -98,10 +152,12 @@ export class WebRtcGateway {
     }
 
     // WebRTC 연결을 위한 DTLS 파라미터 설정
-    await transport.connect({ dtlsParameters: {
-        role: "auto",
+    await transport.connect({
+      dtlsParameters: {
+        role: 'auto',
         fingerprints,
-      } });
+      },
+    });
 
     const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
 
@@ -122,10 +178,14 @@ export class WebRtcGateway {
   private saveStreamToDisk(producer) {
     // FFmpeg를 사용하여 WebRTC 스트림을 파일로 저장
     const ffmpegProcess = spawn(ffmpeg, [
-      '-i', 'pipe:0', // 표준 입력으로 스트림 받기
-      '-c:v', 'copy', // 비디오 인코딩 설정
-      '-c:a', 'copy', // 오디오 인코딩 설정
-      '-f', 'mp4', // 출력 형식을 mp4로 지정
+      '-i',
+      'pipe:0', // 표준 입력으로 스트림 받기
+      '-c:v',
+      'copy', // 비디오 인코딩 설정
+      '-c:a',
+      'copy', // 오디오 인코딩 설정
+      '-f',
+      'mp4', // 출력 형식을 mp4로 지정
       './output/broadcast.mp4',
     ]);
 
@@ -134,24 +194,30 @@ export class WebRtcGateway {
       ffmpegProcess.stdin.write(packet.payload);
     });
 
-    ffmpegProcess.stdout.on('data', (data) => console.log(`FFmpeg stdout: ${data}`));
-    ffmpegProcess.stderr.on('data', (data) => console.error(`FFmpeg stderr: ${data}`));
+    ffmpegProcess.stdout.on('data', (data) =>
+      console.log(`FFmpeg stdout: ${data}`),
+    );
+    ffmpegProcess.stderr.on('data', (data) =>
+      console.error(`FFmpeg stderr: ${data}`),
+    );
 
     ffmpegProcess.on('close', (code) => {
       console.log(`FFmpeg process exited with code ${code}`);
     });
   }
 
-  private extractRtpParametersFromSdp(offerSdp: string): mediasoup.types.RtpParameters {
+  private extractRtpParametersFromSdp(
+    offerSdp: string,
+  ): mediasoup.types.RtpParameters {
     const sdpObject = sdpTransform.parse(offerSdp);
-    const videoMedia = sdpObject.media.find(media => media.type === 'video');
+    const videoMedia = sdpObject.media.find((media) => media.type === 'video');
 
     if (!videoMedia) {
       throw new Error('No video media section found in the SDP');
     }
 
     // Extract codecs
-    const codecs = videoMedia.rtp.map(codec => ({
+    const codecs = videoMedia.rtp.map((codec) => ({
       mimeType: `video/${codec.codec}`,
       payloadType: codec.payload,
       clockRate: codec.rate,
@@ -174,5 +240,3 @@ export class WebRtcGateway {
     };
   }
 }
-
-
