@@ -20,6 +20,6 @@ module.exports = {
     confirmCommit: '이 커밋 메시지로 커밋하시겠습니까?',
   },
   allowCustomScopes: false,
-  skipScope: true, // scope 입력 생략
+  skipQuestions: ['body', 'footer', 'scope'],
   subjectLimit: 72,
 };
