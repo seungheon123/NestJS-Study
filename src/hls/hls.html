@@ -3,139 +3,141 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebRTC Stream to HLS</title>
+  <title>Mediasoup SFU Client</title>
 </head>
 <body>
-<h1>WebRTC Stream to HLS</h1>
-<video id="localVideo" autoplay muted playsinline></video>
-<button id="startStream">Start Streaming</button>
-<button id="stopStream" disabled>Stop Streaming</button>
+<h1>Mediasoup SFU Client</h1>
 
-<script>
-  const startButton = document.getElementById('startStream');
-  const stopButton = document.getElementById('stopStream');
-  const localVideo = document.getElementById('localVideo');
+<!-- 로컬 비디오 스트림 -->
+<div>
+  <h2>Local Video</h2>
+  <video id="localVideo" autoplay muted></video>
+</div>
 
-  let mediaStream = null;
-  // let peerConnection = null;
+<!-- 원격 비디오 스트림 -->
+<div>
+  <h2>Remote Video</h2>
+  <video id="remoteVideo" autoplay></video>
+</div>
 
-  // async function startStreaming() {
-  //   try {
-  //     // Get local media stream (camera and microphone)
-  //     mediaStream = await navigator.mediaDevices.getUserMedia({
-  //       video: true,
-  //       audio: true
-  //     });
-  //     localVideo.srcObject = mediaStream;
-  //
-  //     // Create WebRTC connection
-  //     peerConnection = new RTCPeerConnection({
-  //       iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
-  //     });
-  //
-  //     // Handle ICE candidates and send them to the server
-  //     peerConnection.onicecandidate = event => {
-  //       if (event.candidate) {
-  //         // Send the ICE candidate to the server
-  //         fetch('http://localhost:3000/hls/candidate', {
-  //           method: 'POST',
-  //           headers: { 'Content-Type': 'application/json' },
-  //           body: JSON.stringify({ candidate: event.candidate })
-  //         });
-  //       }
-  //     };
-  //
-  //     // Log ICE connection state changes
-  //     peerConnection.oniceconnectionstatechange = () => {
-  //       console.log('ICE Connection State:', peerConnection.iceConnectionState);
-  //     };
-  //
-  //     // Add each track to the RTCPeerConnection
-  //     mediaStream.getTracks().forEach(track => {
-  //       peerConnection.addTrack(track, mediaStream);
-  //     });
-  //
-  //     // Create an offer and set it as the local description
-  //     const offer = await peerConnection.createOffer();
-  //     await peerConnection.setLocalDescription(offer);
-  //
-  //     // Send offer to server
-  //     const response = await fetch('http://localhost:3000/hls/start', {
-  //       method: 'POST',
-  //       headers: { 'Content-Type': 'application/json' },
-  //       body: JSON.stringify({ sdp: offer.sdp })
-  //     });
-  //
-  //     const { sdp: answerSdp } = await response.json();
-  //     const answer = new RTCSessionDescription({
-  //       type: 'answer',
-  //       sdp: answerSdp
-  //     });
-  //
-  //     // Set the remote description with the server's answer
-  //     await peerConnection.setRemoteDescription(answer);
-  //
-  //     console.log('Streaming started');
-  //     startButton.disabled = true;
-  //     stopButton.disabled = false;
-  //
-  //   } catch (error) {
-  //     console.error('Error starting stream:', error);
-  //   }
-  // }
+<!-- 원격 오디오 스트림 -->
+<div>
+  <h2>Remote Audio</h2>
+  <audio id="remoteAudio" autoplay></audio>
+</div>
 
-  let peerConnection = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+<!-- 클라이언트 스크립트 추가 -->
+<script type="module">
+  import io from 'https://cdn.socket.io/4.3.2/socket.io.esm.min.js';
+  import { Device } from 'https://cdn.jsdelivr.net/npm/mediasoup-client@3.6.60/lib/index.esm.js';
+
+  const socket = io('http://localhost:3000'); // 서버 주소에 맞게 변경
+  let device;
+  let sendTransport;
+  let receiveTransport;
+
+  socket.on('connect', async () => {
+    // 1. mediasoup-client Device 초기화
+    device = new Device();
+    const rtpCapabilities = device.rtpCapabilities;
+
+    // 서버에 RtpCapabilities 전달
+    socket.emit('getRtpCapabilities', rtpCapabilities);
   });
 
-  async function startStreaming() {
-    const mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-    mediaStream.getTracks().forEach(track => peerConnection.addTrack(track, mediaStream));
-    localVideo.srcObject = mediaStream;
-
-
-    // Create an offer and set it as the local description
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
-
-    // Send the offer SDP with fingerprint to the server
-    const response = await fetch('http://localhost:3000/hls/start', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sdp: peerConnection.localDescription.sdp })
-    });
-    console.log(response);
-
-    const { sdp: answerSdp } = await response.json();
-    console.log(answerSdp);
-    await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: answerSdp }));
-    console.log('Streaming started');
-  }
-
-  function stopStreaming() {
-    try {
-      // Close peer connection and stop media stream
-      if (peerConnection) {
-        peerConnection.close();
-        peerConnection = null;
-      }
-
-      if (mediaStream) {
-        mediaStream.getTracks().forEach(track => track.stop());
-        mediaStream = null;
-      }
-
-      console.log('Streaming stopped');
-      startButton.disabled = false;
-      stopButton.disabled = true;
-
-    } catch (error) {
-      console.error('Error stopping stream:', error);
+  // 서버로부터 RtpCapabilities 수신 후 Transport 생성 요청
+  socket.on('rtpCapabilities', async (rtpCapabilities) => {
+    if (!device.loaded) {
+      await device.load({ routerRtpCapabilities: rtpCapabilities });
     }
+
+    // 2. 서버에 Transport 생성 요청
+    socket.emit('createTransport');
+  });
+
+  // 서버가 전송용 Transport를 생성한 후 응답
+  socket.on('transportCreated', async (data) => {
+    sendTransport = device.createSendTransport(data);
+
+    sendTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+      socket.emit('connectTransport', {
+        transportId: data.id,
+        dtlsParameters,
+      });
+      callback();
+    });
+
+    sendTransport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
+      socket.emit('produce', {
+        transportId: data.id,
+        kind,
+        rtpParameters,
+      }, (producerId) => {
+        callback({ id: producerId });
+      });
+    });
+
+    sendTransport.on('connectionstatechange', (state) => {
+      if (state === 'connected') {
+        console.log('Send transport connected');
+      }
+    });
+
+    // 3. 미디어 스트림 생성 및 송출
+    startStreaming();
+  });
+
+  // 4. 미디어 스트림을 생성하고 Transport로 송출
+  async function startStreaming() {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    document.getElementById('localVideo').srcObject = stream; // 로컬 비디오 화면에 표시
+
+    const videoTrack = stream.getVideoTracks()[0];
+    const audioTrack = stream.getAudioTracks()[0];
+
+    // 비디오 Producer 생성
+    await sendTransport.produce({ track: videoTrack });
+    // 오디오 Producer 생성
+    await sendTransport.produce({ track: audioTrack });
   }
 
-  startButton.addEventListener('click', startStreaming);
-  stopButton.addEventListener('click', stopStreaming);
+  // 5. 다른 클라이언트의 미디어 수신
+  socket.on('consume', async (data) => {
+    if (!receiveTransport) {
+      receiveTransport = device.createRecvTransport(data.transportOptions);
+
+      receiveTransport.on('connect', ({ dtlsParameters }, callback, errback) => {
+        socket.emit('connectReceiveTransport', {
+          transportId: receiveTransport.id,
+          dtlsParameters,
+        });
+        callback();
+      });
+
+      receiveTransport.on('connectionstatechange', (state) => {
+        if (state === 'connected') {
+          console.log('Receive transport connected');
+        }
+      });
+    }
+
+    const consumer = await receiveTransport.consume({
+      id: data.consumerId,
+      producerId: data.producerId,
+      kind: data.kind,
+      rtpParameters: data.rtpParameters,
+    });
+
+    const mediaStream = new MediaStream();
+    mediaStream.addTrack(consumer.track);
+
+    // 화면에 스트림 출력 (HTML 비디오/오디오 요소에 할당)
+    if (consumer.kind === 'video') {
+      document.getElementById('remoteVideo').srcObject = mediaStream;
+    } else if (consumer.kind === 'audio') {
+      document.getElementById('remoteAudio').srcObject = mediaStream;
+    }
+  });
 </script>
 </body>
 </html>

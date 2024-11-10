@@ -1,28 +1,29 @@
-import { Injectable } from "@nestjs/common";
-import { PrismaRepository } from "./prisma.repository";
-import { Board, Member } from "@prisma/client";
+import { Injectable } from '@nestjs/common';
+import { PrismaRepository } from './prisma.repository';
+import { Board, Member } from '@prisma/client';
 
 @Injectable()
-export class PrismaService{
+export class PrismaService {
   constructor(private readonly prismaRepository: PrismaRepository) {}
 
   async findMany(): Promise<Member[]> {
     return this.prismaRepository.member.findMany();
   }
 
-  async findById(id: number) : Promise<Member|null> {
+  async findById(id: number): Promise<Member | null> {
     return this.prismaRepository.member.findUnique({
       where: {
-        id: id
-      }
+        id: id,
+        name: 'hello',
+      },
     });
   }
 
   async create(): Promise<Member> {
     return this.prismaRepository.member.create({
       data: {
-        email: "test@gmail.com",
-        name: "Test User",
+        email: 'test@gmail.com',
+        name: 'Test User',
       },
     });
   }
@@ -31,51 +32,51 @@ export class PrismaService{
     await this.prismaRepository.$transaction(async (prisma) => {
       await prisma.member.update({
         where: {
-          id: 1
+          id: 1,
         },
         data: {
-          email: "test2@gmail.com"
-        }
+          email: 'test2@gmail.com',
+        },
       });
       await prisma.member.update({
         where: {
-          id: 2
+          id: 2,
         },
         data: {
-          email: "test3@gmail.com"
-        }
+          email: 'test3@gmail.com',
+        },
       });
-    })
+    });
   }
 
   async withoutTransaction() {
     await this.prismaRepository.member.update({
       where: {
-        id: 1
+        id: 1,
       },
       data: {
-        email: "test2@gmail.com"
-      }
+        email: 'test2@gmail.com',
+      },
     });
     await this.prismaRepository.member.update({
       where: {
-        id: 2
+        id: 2,
       },
       data: {
-        email: "test3@gmail.com"
-      }
+        email: 'test3@gmail.com',
+      },
     });
   }
 
-  async getBoards() : Promise<Board[]> {
+  async getBoards(): Promise<Board[]> {
     return this.prismaRepository.board.findMany();
   }
 
   async getBoardsWithMember(): Promise<Board[]> {
     const boards = this.prismaRepository.board.findMany({
       include: {
-        member: true
-      }
+        member: true,
+      },
     });
     console.log(boards);
     return boards;

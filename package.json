@@ -19,15 +19,18 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "commit": "node commit.js"
+    "commit": "npx px"
   },
   "dependencies": {
+    "@nestjs-modules/ioredis": "^2.0.2",
     "@nestjs/common": "^10.0.0",
     "@nestjs/config": "^3.2.1",
     "@nestjs/core": "^10.0.0",
     "@nestjs/mapped-types": "*",
     "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.4.7",
     "@nestjs/typeorm": "^10.0.2",
+    "@nestjs/websockets": "^10.4.7",
     "@prisma/client": "^5.21.1",
     "@types/bcrypt": "^5.0.2",
     "bcrypt": "^5.1.1",
@@ -37,13 +40,16 @@
     "cz-conventional-changelog": "^3.3.0",
     "cz-customizable": "^7.2.1",
     "ffmpeg-static": "^5.2.0",
+    "ioredis": "^5.4.1",
     "mediasoup": "^3.14.16",
     "mysql2": "^3.9.3",
     "prisma": "^5.21.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
     "sdp-transform": "^2.14.2",
-    "typeorm": "^0.3.20"
+    "socket.io": "^4.8.1",
+    "typeorm": "^0.3.20",
+    "uuid": "^11.0.2"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",

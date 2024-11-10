@@ -2,21 +2,25 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import * as mediasoup from 'mediasoup';
 import {
+  Consumer,
+  Producer,
+  Router,
   RtpCapabilities,
-  RtpParameters,
   WebRtcTransport,
 } from 'mediasoup/node/lib/types';
-import { HlsService } from '../hls/hls.service';
-import { spawn } from 'child_process';
-import ffmpeg from 'ffmpeg-static';
-import { RtpCodecCapability } from 'mediasoup/node/lib/RtpParameters';
-import * as sdpTransform from 'sdp-transform';
+import { v4 as uuidv4 } from 'uuid';
+import { InjectRedis } from '@nestjs-modules/ioredis';
+import Redis from 'ioredis';
 
 @Injectable()
 export class WebRtcGateway implements OnModuleInit {
   private worker: mediasoup.types.Worker;
-  private transport: WebRtcTransport;
-  private router: mediasoup.types.Router;
+  transports: WebRtcTransport[] = [];
+  // router: mediasoup.types.Router: Map<string, Transport>;
+  private routers: Map<string, Router>;
+  private producers: Producer[] = [];
+  private consumers: Consumer[] = [];
+  constructor(@InjectRedis() private readonly redis: Redis) {}
 
   async onModuleInit() {
     this.worker = await mediasoup.createWorker({
@@ -25,7 +29,10 @@ export class WebRtcGateway implements OnModuleInit {
       rtcMinPort: 40000,
       rtcMaxPort: 49999,
     });
-    this.router = await this.worker.createRouter({
+  }
+
+  async createRouter(): Promise<Router> {
+    const router = await this.worker.createRouter({
       mediaCodecs: [
         {
           kind: 'audio',
@@ -40,203 +47,91 @@ export class WebRtcGateway implements OnModuleInit {
         },
       ],
     });
+    const roomId = uuidv4();
+    this.redis.set(roomId, router.id);
+    this.routers.set(roomId, router);
+    return router;
+  }
 
-    const webRtcTransport = await this.router.createWebRtcTransport({
+  async createWebRtcTransport(): Promise<WebRtcTransport> {
+    const router = await this.createRouter();
+    const transport = await router.createWebRtcTransport({
       listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
     });
-    // transport.on('connect', (dtlsParameters, callback) => {
-    //   console.log('Transport connected');
-    //   callback();
-    // });
-    // transport.on('connectionstatechange', (state) => {
-    //   console.log(`Connection state changed: ${state}`);
-    // });
-    await webRtcTransport.setMaxIncomingBitrate(3500000);
-    await webRtcTransport.setMaxOutgoingBitrate(2000000);
-    await webRtcTransport.connect({
-      dtlsParameters: {
-        role: 'auto',
-        fingerprints: [
-          {
-            algorithm: 'sha-256',
-            value:
-              'E5:F5:CA:A7:2D:93:E6:16:AC:21:09:9F:23:51:62:8C:D0:66:E9:0C:22:54:2B:82:0C:DF:E0:C5:2C:7E:CD:53',
-          },
-        ],
-      },
-    });
-    webRtcTransport.on('routerclose', () => {
+    await transport.setMaxIncomingBitrate(3500000);
+    await transport.setMaxOutgoingBitrate(2000000);
+
+    transport.on('routerclose', () => {
       console.log('Router closed');
     });
+    this.transports.push(transport);
+    return transport;
   }
 
-  private async initMediasoup() {
-    const mediaCodecs: RtpCodecCapability[] = [
-      {
-        kind: 'video',
-        mimeType: 'video/VP8',
-        clockRate: 90000,
-        parameters: {},
-      },
-      {
-        kind: 'video',
-        mimeType: 'video/VP9',
-        clockRate: 90000,
-        parameters: {},
-      },
-      {
-        kind: 'video',
-        mimeType: 'video/h264',
-        clockRate: 90000,
-        parameters: {},
-      },
-      {
-        kind: 'audio',
-        mimeType: 'audio/opus',
-        clockRate: 48000,
-        channels: 2,
-      },
-    ];
-
-    const worker = await mediasoup.createWorker();
-    this.router = await worker.createRouter({ mediaCodecs });
-
-    console.log('Mediasoup Worker and Router initialized');
-  }
-
-  private async createTransport() {
-    this.transport = await this.router.createWebRtcTransport({
-      listenIps: [{ ip: '0.0.0.0', announcedIp: null }],
-      enableUdp: true,
-      enableTcp: true,
-      preferUdp: true,
+  async createProducer(
+    transport: WebRtcTransport,
+    kind: 'audio' | 'video',
+    rtpParameters: any,
+  ): Promise<Producer> {
+    const producer = await transport.produce({
+      kind,
+      rtpParameters,
     });
-    return this.transport;
+    this.producers.push(producer);
+    producer.on('transportclose', () => {
+      console.log(`${kind} producer's transport closed`);
+      this.removeProducer(producer);
+    });
+    return producer;
   }
 
-  // async handleOffer(offerSdp: string) {
-  //   console.log(offerSdp);
-  //   const peerConnection = new RTCPeerConnection({
-  //     iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-  //   });
-  //   await peerConnection.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: offerSdp }));
-  //   const answerSdp = await peerConnection.createAnswer();
-  //   await peerConnection.setLocalDescription(answerSdp);
-  //
-  //   peerConnection.onicecandidate = (event) => {
-  //     if(event.candidate) {
-  //       console.log('New ICE candidate:', event.candidate);
-  //     }
-  //   };
-  //   return answerSdp.sdp;
+  async createConsumer(
+    transport: WebRtcTransport,
+    producerId: string,
+    rtpCapabilities: RtpCapabilities,
+  ): Promise<Consumer | null> {
+    if (!this.router.canConsume({ producerId, rtpCapabilities })) {
+      console.error('Can not consume');
+      return null;
+    }
+    const consumer = await transport.consume({
+      producerId,
+      rtpCapabilities,
+      paused: true,
+    });
+    this.consumers.push(consumer);
+    consumer.on('transportclose', () => {
+      console.log('Consumer transport closed');
+      this.removeConsumer(consumer);
+    });
+    return consumer;
+  }
+
+  // getRtpCapabilities(): RtpCapabilities {
+  //   return this.router.rtpCapabilities;
   // }
 
-  public async handleOffer(offerSdp: string) {
-    const transport = await this.createTransport();
-
-    const sdpObject = sdpTransform.parse(offerSdp);
-    const fingerprints = [];
-
-    // SDP의 모든 미디어 섹션에서 fingerprint를 찾아서 배열에 추가
-    for (const media of sdpObject.media) {
-      if (media.fingerprint) {
-        fingerprints.push({
-          algorithm: media.fingerprint.type,
-          value: media.fingerprint.hash,
-        });
-        break; // 첫 번째 fingerprint만 사용하고 나머지는 무시
-      }
-    }
-
-    // WebRTC 연결을 위한 DTLS 파라미터 설정
-    await transport.connect({
-      dtlsParameters: {
-        role: 'auto',
-        fingerprints,
-      },
-    });
-
-    const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
-
-    // 클라이언트에서 받은 SDP로부터 RTP 파라미터를 추출
-    // const rtpParameters = this.extractRtpParametersFromSdp(offerSdp);
-
-    // transport.produce()에 ssrc 포함된 rtpParameters 사용
-    const producer = await transport.produce({ kind: 'video', rtpParameters });
-
-    // Return necessary details to the client
-    return {
-      id: producer.id,
-      kind: producer.kind,
-      transportId: transport.id,
-    };
+  findTransport(transportId: string): WebRtcTransport {
+    return this.transports.find((t) => t.id === transportId);
   }
 
-  private saveStreamToDisk(producer) {
-    // FFmpeg를 사용하여 WebRTC 스트림을 파일로 저장
-    const ffmpegProcess = spawn(ffmpeg, [
-      '-i',
-      'pipe:0', // 표준 입력으로 스트림 받기
-      '-c:v',
-      'copy', // 비디오 인코딩 설정
-      '-c:a',
-      'copy', // 오디오 인코딩 설정
-      '-f',
-      'mp4', // 출력 형식을 mp4로 지정
-      './output/broadcast.mp4',
-    ]);
-
-    // Producer에서 RTP 패킷을 읽고 FFmpeg에 전달
-    producer.on('rtp', (packet) => {
-      ffmpegProcess.stdin.write(packet.payload);
-    });
-
-    ffmpegProcess.stdout.on('data', (data) =>
-      console.log(`FFmpeg stdout: ${data}`),
-    );
-    ffmpegProcess.stderr.on('data', (data) =>
-      console.error(`FFmpeg stderr: ${data}`),
-    );
-
-    ffmpegProcess.on('close', (code) => {
-      console.log(`FFmpeg process exited with code ${code}`);
-    });
+  async connectTransport(transportId: string, dtlsParameters: any) {
+    const transport = this.findTransport(transportId);
+    if (transport) {
+      await transport.connect({ dtlsParameters });
+    }
   }
 
-  private extractRtpParametersFromSdp(
-    offerSdp: string,
-  ): mediasoup.types.RtpParameters {
-    const sdpObject = sdpTransform.parse(offerSdp);
-    const videoMedia = sdpObject.media.find((media) => media.type === 'video');
+  private removeProducer(producer: Producer) {
+    this.producers = this.producers.filter((p) => p.id !== producer.id);
+    producer.close();
+  }
 
-    if (!videoMedia) {
-      throw new Error('No video media section found in the SDP');
-    }
-
-    // Extract codecs
-    const codecs = videoMedia.rtp.map((codec) => ({
-      mimeType: `video/${codec.codec}`,
-      payloadType: codec.payload,
-      clockRate: codec.rate,
-      channels: codec.encoding || 1,
-      parameters: {}, // Add codec parameters if available
-    }));
-
-    // Extract encodings (using SSRC)
-    const encodings = videoMedia.ssrcs
-      ? [{ ssrc: parseInt(videoMedia.ssrcs[0].id, 10) }]
-      : [];
-
-    if (encodings.length === 0) {
-      throw new Error('No SSRC found in the video media section');
-    }
-
-    return {
-      codecs,
-      encodings,
-    };
+  private removeConsumer(consumer: Consumer) {
+    this.consumers = this.consumers.filter((c) => c.id !== consumer.id);
+    consumer.close();
   }
 }
